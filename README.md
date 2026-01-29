@@ -501,8 +501,6 @@ def generate(prompt, max_tokens=100):
 - [ ] Checkpoint saving/loading
 - [ ] Text generation script
 - [ ] Evaluation metrics (perplexity)
-- [ ] Web demo interface
-- [ ] Model compression/quantization
 
 ---
 
