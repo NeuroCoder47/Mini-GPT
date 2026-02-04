@@ -93,495 +93,122 @@ graph LR
 </td>
 <td width="50%">
 
-### ⚡ Training
-- **AdamW Optimizer**: Weight decay for regularization
-- **Gradient Clipping**: Stable training with norm=1.0
-- **Learning Rate Scheduling**: Cosine decay (planned)
-- **Mixed Precision**: Efficient GPU utilization
-- **Validation Loop**: Regular evaluation metrics
+# 🚀 GPT Training Pipeline
 
-</td>
-</tr>
-</table>
+> Production-grade autoregressive language model training with efficient mixed precision and streaming data
 
 ---
 
-## 🏗️ Architecture
+## ⚙️ Model Config
 
-### GPT Model Overview
-
-The model implements a **decoder-only Transformer architecture**, similar to GPT-2/GPT-3:
-
-```python
-GPT(
-  vocab_size=32768,      # Tokenizer vocabulary
-  d_model=512,           # Hidden dimension
-  num_heads=16,          # Attention heads
-  num_layers=8,          # Transformer blocks
-  d_ff=2048,             # Feed-forward dimension
-  max_seq_length=1024,   # Context window
-  dropout=0.1            # Regularization
-)
-```
-
-<details>
-<summary><b>🔍 Click to see detailed architecture</b></summary>
-
-### Components
-
-#### 1. **Multi-Head Attention**
-```
-Self-Attention(Q, K, V) = softmax(QK^T / √d_k) V
-```
-- Splits embedding into multiple heads
-- Parallel attention computation
-- Scaled dot-product attention
-- Causal masking for autoregressive generation
-
-#### 2. **Position-Wise Feed-Forward**
-```
-FFN(x) = GELU(xW₁ + b₁)W₂ + b₂
-```
-- Two-layer MLP with GELU activation
-- Expansion ratio of 4x (d_ff = 4 × d_model)
-- Processes each position independently
-
-#### 3. **Positional Encoding**
-```
-PE(pos, 2i)   = sin(pos / 10000^(2i/d_model))
-PE(pos, 2i+1) = cos(pos / 10000^(2i/d_model))
-```
-- Sinusoidal encoding for position information
-- Enables length generalization
-- Added to token embeddings
-
-#### 4. **Decoder Layer**
-Each decoder block applies:
-1. Multi-head self-attention with causal mask
-2. Add & LayerNorm (residual connection)
-3. Feed-forward network
-4. Add & LayerNorm (residual connection)
-
-</details>
-
----
-
-## 🚀 Quick Start
-
-### Prerequisites
-
-```bash
-# Python 3.8+
-pip install torch>=2.0.0
-pip install numpy
-pip install tqdm
-pip install datasets
-pip install tokenizers
-pip install pyarrow
-```
-
-### Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/gpt-from-scratch.git
-cd gpt-from-scratch
-
-# Install dependencies
-pip install -r requirements.txt
+```yaml
+Architecture: 4-layer GPT
+Heads: 16 | Dims: 512 | Params: ~25M
+Vocab: 32K tokens | Context: 512 tokens
+Training: 10K steps | Batch: 8→32 (grad accumulation)
 ```
 
 ---
 
-## 📊 Pipeline
+## ✨ Core Features
 
-### Step 1️⃣: Data Preprocessing
+### 🎯 **Mixed Precision Training**
+Trains in FP16 for 2x speed while maintaining FP32 master weights. Automatic gradient scaling prevents tiny gradient underflow and dynamically adapts to avoid overflow.
 
-Prepare and shuffle the TinyStories dataset:
+### 📦 **Gradient Accumulation** 
+Simulates large batches (32) on limited VRAM by accumulating gradients over 4 micro-batches before weight updates.
 
-```bash
-python preprocess.py
+### 📈 **Cosine LR Schedule**
+Linear warmup (50 steps) followed by smooth cosine decay from 6e-4 to 6e-5 over full training run.
+
+### ⚡ **Optimized Data Loading**
+- **DataTrove .ds format**: Binary memory-mapped tokenized sequences for instant access
+- **Cyclic iterators**: Infinite streaming without epoch boundaries using `cycle()`
+- **Prefetching pipeline**: 2 workers + 2 prefetch factor for compute/IO overlap
+- **Persistent workers**: Processes stay alive to eliminate reload overhead
+- **Pinned memory**: Non-blocking GPU transfers during computation
+
+### 🔍 **Training Monitoring**
+- **Real-time tracking**: Loss, learning rate, MFU% logged every 10 steps
+- **Validation probes**: Eval runs every 100 steps to monitor generalization
+- **Hardware metrics**: Model FLOPS Utilization tracks GPU efficiency
+
+### 🎲 **Autoregressive Training**
+Next-token prediction using teacher forcing. Input shifted by one position to learn P(token_t | context).
+
+### 🛡️ **Stability Guards**
+- Gradient clipping (max norm 1.0) prevents exploding gradients
+- Weight decay (0.1) for regularization
+- Dynamic loss scaling adjusts to prevent FP16 overflow/underflow
+
+---
+
+## 🎓 Training Flow
+
 ```
-
-**What it does:**
-- 📥 Downloads TinyStories dataset from HuggingFace
-- 🔀 Performs explicit shuffling with seed=42
-- ✂️ Splits into 99% train / 1% validation
-- 💾 Saves as memory-mapped binary files
-
-**Output:**
-```
-Preprocess Data (Pre Train)/
-├── train.bin    # Training data (99%)
-└── val.bin      # Validation data (1%)
+Dynamic LR → Grad Accumulation (4 micro-steps) → Mixed Precision
+    ↓              ↓                                    ↓
+Per-step    Simulate batch=32         FP16 compute, FP32 params
+adjustment   with batch=8 memory      + auto gradient scaling
+    ↓              ↓                                    ↓
+Gradient Clipping → Weight Update → Validation Probes (every 100)
 ```
 
 ---
 
-### Step 2️⃣: Train Tokenizer
+## 💡 Implementation Highlights
 
-Build a custom BPE tokenizer:
+**Performance**
+- Fused AdamW optimizer for kernel-level speedups
+- Ready for `torch.compile()` (2x boost when uncommented)
+- Non-blocking CUDA transfers overlap data loading with compute
 
-```bash
-python tok_train.py --vocab-size 32768 --max-chars 10000000000
-```
+**Data Pipeline**  
+- `.ds` files use 2-byte token encoding supporting 65K vocab
+- StopIteration-free loading via cyclic sampling
+- Automatic handling of variable dataset sizes
 
-**What it does:**
-- 📖 Iterates through training documents
-- 🔤 Learns BPE merges from character level
-- 💾 Saves tokenizer to disk
-- 📈 Caches token-to-bytes mapping
-
-**Arguments:**
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--vocab-size` | 32768 | Target vocabulary size |
-| `--max-chars` | 10B | Max characters for training |
-| `--doc-cap` | 10000 | Max chars per document |
-
-**Output:**
-```
-Tokenizer/data/tokenizer/
-├── tokenizer.json        # Tokenizer config
-└── token_bytes.pt        # Byte mapping
-```
+**Mixed Precision Details**
+- Autocast manages FP16/FP32 casting automatically
+- Gradient scaler handles loss multiplication, backprop, unscaling, and overflow detection
+- Dynamic scale factor adjustment (halves on overflow, doubles after 2K successful steps)
 
 ---
 
-### Step 3️⃣: Train the Model
+## 📊 What to Explore
 
-Launch training:
+**Dive into the code to understand:**
+- How gradient scaler prevents FP16 underflow while avoiding overflow
+- Why loss is divided by accumulation steps before backward pass
+- MFU calculation methodology (FLOPS achieved vs theoretical peak)
+- How cyclic iterators enable infinite training without data reloading
+- The complete mixed precision flow from forward pass to parameter update
 
-```bash
-python Train.py
-```
-
-**What it does:**
-- 🏗️ Initializes GPT model
-- 📊 Loads binary training data
-- 🔄 Trains with AdamW optimizer
-- 📉 Validates every 100 steps
-- 💾 Saves checkpoints
-
-**Training Configuration:**
-```python
-batch_size = 4          # Sequences per batch
-block_size = 512        # Sequence length
-n_layer = 8             # Transformer layers
-n_head = 16             # Attention heads
-n_embd = 512            # Embedding dimension
-learning_rate = 3e-4    # Initial LR
-max_iters = 10000       # Training steps
-```
-
-**Expected Output:**
-```
-Training Started......
-Iteration 100, Loss: 4.2341, Val Loss 4.1892
-Iteration 200, Loss: 3.8765, Val Loss 3.8234
-Iteration 300, Loss: 3.5432, Val Loss 3.5123
-...
-```
+**Inline comments explain:**
+- Full gradient scaling mechanics (scaling → backward → unscaling → update)
+- Loss averaging strategy across micro-batches
+- Dynamic scale factor adjustment logic
 
 ---
 
-## 📈 Training Details
-
-### Loss Function
-
-Cross-entropy loss over next-token prediction:
-
-```python
-Loss = -∑ log P(token_next | context)
-```
-
-### Optimization
-
-- **Optimizer**: AdamW with weight decay (0.1)
-- **Learning Rate**: 3e-4 with planned cosine decay
-- **Gradient Clipping**: Max norm of 1.0
-- **Batch Size**: 4 sequences × 512 tokens = 2048 tokens/batch
-
-### Data Loading
-
-Efficient random sampling from binary files:
-
-```python
-# Memory-mapped arrays for zero-copy access
-data = np.memmap('train.bin', dtype=np.uint16, mode='r')
-
-# Random sampling for each batch
-idxs = torch.randint(0, len(dataset), (batch_size,))
-```
-
----
-
-## 🎯 Model Capabilities
-
-After training, your model can:
-
-- ✍️ **Generate coherent text** continuations
-- 📖 **Complete stories** based on prompts
-- 🎨 **Create narratives** in the style of TinyStories
-- 🔄 **Learn language patterns** from 2M+ documents
-
-### Generation Example
-
-```python
-# Load trained model
-model = GPT(...)
-model.load_state_dict(torch.load('checkpoint.pt'))
-
-# Generate text
-prompt = "Once upon a time"
-generated = model.generate(prompt, max_length=100)
-```
-
----
-
-## 📂 Project Structure
-
-```
-gpt-from-scratch/
-│
-├── 📄 preprocess.py          # Data preprocessing pipeline
-├── 📄 tok_train.py            # Tokenizer training script (from Nanochat)
-├── 📄 Train.py                # Main training loop
-├── 📄 model_GPT.py            # GPT architecture
-├── 📄 tokenizer.py            # BPE tokenizer implementation (from Nanochat)
-├── 📄 dataset.py              # Dataset utilities (from Nanochat)
-├── 📄 common.py               # Helper functions (from Nanochat)
-├── 📄 report.py               # Logging utilities (from Nanochat)
-│
-├── 📁 Preprocess Data/        # Binary training files
-│   ├── train.bin
-│   └── val.bin
-│
-├── 📁 Tokenizer/data/         # Tokenizer artifacts
-│   └── tokenizer/
-│       ├── tokenizer.json
-│       └── token_bytes.pt
-│
-└── 📁 out/                    # Model checkpoints
-    └── checkpoint.pt
-```
-
-> **Note**: Files marked "from Nanochat" are adapted from [Andrej Karpathy's Nanochat repository](https://github.com/karpathy/nanochat).
-
----
-
-## 🔬 Technical Highlights
-
-### Memory Efficiency
-
-- **Memory-Mapped Files**: No need to load entire dataset into RAM
-- **Binary Encoding**: 16-bit integers (uint16) for token IDs
-- **Chunked Processing**: Batch processing prevents OOM errors
-
-### Reproducibility
-
-- **Fixed Seeds**: `random.seed(42)` and `torch.manual_seed(42)`
-- **Deterministic Shuffling**: Index-based shuffling for consistency
-- **Version Locked**: Specific package versions in requirements
-
-### Scalability
-
-- **Modular Design**: Easy to swap datasets or model configs
-- **GPU Support**: Automatic CUDA detection and utilization
-- **Gradient Accumulation**: Ready for multi-GPU training (future)
-
----
-
-## 📊 Performance Metrics
-
-<div align="center">
-
-| Metric | Value |
-|--------|-------|
-| **Parameters** | ~40M |
-| **Training Tokens** | ~2B |
-| **Vocab Size** | 32,768 |
-| **Context Length** | 512 tokens |
-| **Training Time** | ~12 hours (1x RTX 3090) |
-| **Final Loss** | ~2.8 |
-
-</div>
-
----
-
-## 🛠️ Advanced Usage
-
-### Custom Dataset
-
-Replace TinyStories with your own data:
-
-```python
-# In preprocess.py
-dataset = load_dataset("your-dataset-name", split='train')
-```
-
-### Hyperparameter Tuning
-
-Modify training config in `Train.py`:
-
-```python
-# Larger model
-n_layer = 12        # More layers
-n_head = 20         # More heads
-n_embd = 768        # Larger embeddings
-
-# Different training
-batch_size = 8      # Larger batches
-learning_rate = 1e-4  # Lower LR
-```
-
-### Inference & Generation
-
-```python
-from model_GPT import GPT
-from tokenizers import Tokenizer
-
-# Load model and tokenizer
-model = GPT(...)
-model.load_state_dict(torch.load('checkpoint.pt'))
-tokenizer = Tokenizer.from_file('tokenizer.json')
-
-# Generate
-def generate(prompt, max_tokens=100):
-    ids = tokenizer.encode(prompt).ids
-    # ... autoregressive generation loop
-    return tokenizer.decode(generated_ids)
-```
-
----
-
-## 🐛 Troubleshooting
-
-<details>
-<summary><b>Out of Memory (OOM) errors</b></summary>
-
-- Reduce `batch_size` in `Train.py`
-- Decrease `block_size` (sequence length)
-- Use gradient accumulation
-- Enable mixed precision training
-
-</details>
-
-<details>
-<summary><b>Slow training</b></summary>
-
-- Ensure GPU is being used: check `device = 'cuda'`
-- Increase `batch_size` if memory allows
-- Use `pin_memory=True` in DataLoader
-- Enable TF32: already done in `common.py`
-
-</details>
-
-<details>
-<summary><b>Loss not decreasing</b></summary>
-
-- Check learning rate (try 1e-4 or 6e-4)
-- Verify data is shuffled properly
-- Ensure tokenizer trained correctly
-- Add gradient clipping if exploding
-
-</details>
-
----
-
-## 🗺️ Roadmap
-
-- [x] Basic GPT architecture
-- [x] BPE tokenizer training
-- [x] Binary data preprocessing
-- [x] Training loop with validation
-- [ ] Learning rate scheduling
-- [ ] Multi-GPU support (DDP)
-- [ ] Mixed precision training (AMP)
-- [ ] Checkpoint saving/loading
-- [ ] Text generation script
-- [ ] Evaluation metrics (perplexity)
-
----
-
-## 📚 Resources & References
-
-### Papers
-- [Attention Is All You Need](https://arxiv.org/abs/1706.03762) - Original Transformer
-- [Language Models are Unsupervised Multitask Learners](https://d4mucfpksywv.cloudfront.net/better-language-models/language_models_are_unsupervised_multitask_learners.pdf) - GPT-2
-- [Neural Machine Translation of Rare Words with Subword Units](https://arxiv.org/abs/1508.07909) - BPE
-
-### Datasets
-- [TinyStories](https://huggingface.co/datasets/roneneldan/TinyStories) - Training corpus
-- [WikiText](https://huggingface.co/datasets/Salesforce/wikitext) - Alternative dataset
-
-### Inspired By
-- [Nanochat](https://github.com/karpathy/nanochat) by Andrej Karpathy - **Tokenizer code source**
-- [nanoGPT](https://github.com/karpathy/nanoGPT) by Andrej Karpathy
-- [minGPT](https://github.com/karpathy/minGPT) by Andrej Karpathy
-- [GPT-2](https://github.com/openai/gpt-2) by OpenAI
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-## 📝 Code Attribution
-
-### Tokenizer Implementation
-
-The tokenizer implementation (`tokenizer.py`, `tok_train.py`, `common.py`, `dataset.py`, `report.py`) is adapted from **[Nanochat](https://github.com/karpathy/nanochat)** by **Andrej Karpathy**.
-
-These files provide:
-- HuggingFace-compatible BPE tokenizer training
-- Efficient dataset iteration utilities
-- Common helper functions for distributed training
-- Logging and reporting infrastructure
-
-We are grateful for Andrej's open-source contributions to the ML community, which have made this educational project possible.
-
-**Original Repository**: [github.com/karpathy/nanochat](https://github.com/karpathy/nanochat)
-
----
-
-## 🙏 Acknowledgments
-
-- **Andrej Karpathy** for the [Nanochat](https://github.com/karpathy/nanochat) tokenizer implementation and educational inspiration through [nanoGPT](https://github.com/karpathy/nanoGPT) and [minGPT](https://github.com/karpathy/minGPT)
-- **TinyStories Dataset** creators for the training data
-- **HuggingFace** for datasets and tokenizers libraries
-- **PyTorch** team for the amazing framework
+## 🎯 Quick Reference
+
+| Component | Value | Purpose |
+|-----------|-------|---------|
+| **Batch Size** | 8 | GPU memory constraint |
+| **Grad Accum Steps** | 4 | Effective batch = 32 |
+| **Learning Rate** | 6e-4 → 6e-5 | Cosine decay |
+| **Warmup** | 50 steps | Early stability |
+| **Weight Decay** | 0.1 | L2 regularization |
+| **Grad Clip** | 1.0 | Explosion prevention |
+| **Workers** | 2 | Data loading parallelism |
 
 ---
 
 <div align="center">
 
-### ⭐ Star this repo if you found it helpful!
+**🔬 Explore the code to see how production-grade LLM training works!**
 
-Made with ❤️ and lots of ☕
-
-<img src="https://img.shields.io/github/stars/yourusername/gpt-from-scratch?style=social" alt="GitHub stars">
-<img src="https://img.shields.io/github/forks/yourusername/gpt-from-scratch?style=social" alt="GitHub forks">
-
-[Report Bug](https://github.com/yourusername/gpt-from-scratch/issues) •
-[Request Feature](https://github.com/yourusername/gpt-from-scratch/issues)
-
----
-
-**Built with the power of transformers** 🚀
+Built for learning and experimentation 🚀
 
 </div>
