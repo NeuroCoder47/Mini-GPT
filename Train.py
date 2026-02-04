@@ -16,7 +16,7 @@ from datatrove.utils.dataset import DatatroveFolderDataset
 
 out_dir = 'out'
 train_data_dir = r'C:\Users\Ashmit Gupta\Desktop\Coding\Pytorch\Transformer\GPT\Professional GPT\Preprocess Data (Pre Train)\output_train'
-val_data_dir = r'C:\Users\Ashmit Gupta\Desktop\Coding\Pytorch\Transformer\GPT\Professional GPT\Preprocess Data (Pre Train)\output_test'  # Use same folder or separate val folder
+val_data_dir = r'C:\Users\Ashmit Gupta\Desktop\Coding\Pytorch\Transformer\GPT\Professional GPT\Preprocess Data (Pre Train)\output_test'  
 
 batch_size = 8
 block_size = 512
@@ -79,9 +79,6 @@ val_loader = DataLoader(
 )
 
 
-# For more explanation. Of how this code works. Look at this chat
-# https://claude.ai/chat/498285ed-d3a1-41d8-b501-c22ddb041ca8
-# emsil address :officialashmit47@gmail.com
 
 train_iter = iter(cycle(train_loader))
 val_iter = iter(cycle(val_loader))
@@ -196,4 +193,5 @@ for step in range(max_iters):
     if step % 100 == 0 and step > 0:  
         c = evaluate()
         print(f"Iteration {step}, Loss: {loss.item():.4f}, Val Loss {c:.4f}, LR: {lr:.6f}, MFU: {running_mfu*100:.2f}%")
+
 
