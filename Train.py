@@ -16,7 +16,7 @@ from datatrove.utils.dataset import DatatroveFolderDataset
 
 out_dir = 'out'
 train_data_dir = r'C:\Users\Ashmit Gupta\Desktop\Coding\Pytorch\Transformer\GPT\Professional GPT\Preprocess Data (Pre Train)\output_train'
-val_data_dir = r'C:\Users\Ashmit Gupta\Desktop\Coding\Pytorch\Transformer\GPT\Professional GPT\Preprocess Data (Pre Train)\output_test'  
+val_data_dir = r'C:\Users\Ashmit Gupta\Desktop\Coding\Pytorch\Transformer\GPT\Professional GPT\Preprocess Data (Pre Train)\output_test' 
 
 batch_size = 8
 block_size = 512
@@ -35,55 +35,10 @@ vocab_size   = 32768
 max_batch_size = 32
 warmup_iters = 50
 token_size = 2
-num_workers = 0
+num_workers = 2
 
 
-train_dataset = DatatroveFolderDataset(
-    data_folder=train_data_dir,
-    seq_len=block_size,
-    filename_pattern="*.ds",
-    recursive=True,
-    token_size=token_size,
-    shuffle=False,  
-    return_positions=False,
-)
-
-
-val_dataset = DatatroveFolderDataset(
-    data_folder=val_data_dir,
-    seq_len=block_size,
-    filename_pattern="*.ds",
-    recursive=True,
-    token_size=token_size,
-    shuffle=False,
-    return_positions=False,
-)
-
-train_loader = DataLoader(
-    train_dataset,
-    batch_size=batch_size,
-    shuffle=False,  
-    num_workers=num_workers,
-    pin_memory=True,
-    persistent_workers=True if num_workers > 0 else False,  
-)
-
-
-val_loader = DataLoader(
-    val_dataset,
-    batch_size=batch_size,
-    shuffle=False,
-    num_workers=num_workers,
-    pin_memory=True,
-    persistent_workers=True if num_workers > 0 else False,
-)
-
-
-
-train_iter = iter(cycle(train_loader))
-val_iter = iter(cycle(val_loader))
-
-def get_batch(split):
+def get_batch(split, train_iter, val_iter):
 
     iterator = train_iter if split == 'train' else val_iter
     
@@ -100,15 +55,9 @@ def get_batch(split):
         y = y.to(device)
     
     return x, y
-criterion = nn.CrossEntropyLoss()
-model = GPT(tgt_vocab_size=vocab_size, d_model=n_embd, num_head=n_head, num_layers=n_layer, d_ff=4*n_embd, max_seq_length=512, dropout=dropout)
-#model = torch.compile(model)
-optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay,fused=True)
-scaler = torch.amp.GradScaler()
-print ("Using Mixed precision now")
-model.to(device)
 
-def evaluate(eval_iters=4):
+
+def evaluate(model, val_loader, criterion, vocab_size, device, eval_iters=4):
     model.eval()
     losses = []
     eval_iter = iter(val_loader)
@@ -143,9 +92,6 @@ def lr_scheduling(learning_rate, min_lr, warmup_iters, it, lr_decay_iters):
     coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio))
     return min_lr + coeff * (learning_rate - min_lr)
 
-grad_accm_steps = max_batch_size // batch_size
-num_params = sum(p.numel() for p in model.parameters())
-print(f"Model has {num_params:,} parameters")
 
 def estimate_mfu(num_params, batch_size, block_size, grad_accum_steps, dt, device_type='cuda'):
     if device_type != 'cuda':
@@ -157,41 +103,105 @@ def estimate_mfu(num_params, batch_size, block_size, grad_accum_steps, dt, devic
     flops_promised = 9.0e12 
     mfu = flops_achieved / flops_promised
     return mfu
-running_mfu = -1.0
 
-X, Y = get_batch('train') 
 
-print("Training Stated......")
-for step in range(max_iters):
-    t0 = time.time()
-    lr = lr_scheduling(learning_rate, min_lr, warmup_iters, step, lr_decay_iters)
-    for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
-    optimizer.zero_grad()  
-    for micro_step in range(grad_accm_steps):
-        with autocast(device_type='cuda',dtype=torch.float16):
-            logits = model(X) 
-            batch_size_actual, sequence_length, vocab_size_actual = logits.shape        
-            logits_flat = logits.view(-1, vocab_size_actual) 
-            targets_flat = Y.view(-1)
-            loss = criterion(logits_flat, targets_flat)/grad_accm_steps
-        X, Y = get_batch('train') 
-        scaler.scale(loss).backward() 
-    scaler.unscale_(optimizer) 
-    torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-    scaler.step(optimizer)
-    scaler.update() 
-    t1 = time.time()
-    dt = t1 - t0 
+if __name__ == '__main__':
+    train_dataset = DatatroveFolderDataset(
+        data_folder=train_data_dir,
+        seq_len=block_size,
+        filename_pattern="*.ds",
+        recursive=True,
+        token_size=token_size,
+        shuffle=False,  
+        return_positions=False,
+    )
 
-    if step >= 5: 
-        mfu = estimate_mfu(num_params, batch_size, block_size, grad_accm_steps, dt, device)
-        running_mfu = mfu if running_mfu == -1.0 else 0.9 * running_mfu + 0.1 * mfu
-    if step % 10 == 0 and step > 0:
-        print(f"[Step {step:5d}] Loss: {loss.item():.4f}, LR: {lr:.6f}, MFU: {running_mfu*100:.2f}%", flush=True)
 
-    if step % 100 == 0 and step > 0:  
-        c = evaluate()
-        print(f"Iteration {step}, Loss: {loss.item():.4f}, Val Loss {c:.4f}, LR: {lr:.6f}, MFU: {running_mfu*100:.2f}%")
+    val_dataset = DatatroveFolderDataset(
+        data_folder=val_data_dir,
+        seq_len=block_size,
+        filename_pattern="*.ds",
+        recursive=True,
+        token_size=token_size,
+        shuffle=False,
+        return_positions=False,
+    )
+
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=False,  
+        num_workers=num_workers,
+        prefetch_factor=2,
+        pin_memory=True,
+        persistent_workers=True if num_workers > 0 else False,  
+    )
+
+
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        prefetch_factor=2,
+        pin_memory=True,
+        persistent_workers=True if num_workers > 0 else False,
+    )
+
+
+
+
+    train_iter = iter(cycle(train_loader))
+    val_iter = iter(cycle(val_loader))
+
+    criterion = nn.CrossEntropyLoss()
+    model = GPT(tgt_vocab_size=vocab_size, d_model=n_embd, num_head=n_head, num_layers=n_layer, d_ff=4*n_embd, max_seq_length=512, dropout=dropout)
+    #model = torch.compile(model)
+    optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay,fused=True)
+    scaler = torch.amp.GradScaler()
+    print ("Using Mixed precision now")
+    model.to(device)
+
+    grad_accm_steps = max_batch_size // batch_size
+    num_params = sum(p.numel() for p in model.parameters())
+    print(f"Model has {num_params:,} parameters")
+
+    running_mfu = -1.0
+
+    X, Y = get_batch('train', train_iter, val_iter) 
+
+    print("Training Stated......")
+    for step in range(max_iters):
+        t0 = time.time()
+        lr = lr_scheduling(learning_rate, min_lr, warmup_iters, step, lr_decay_iters)
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = lr
+        optimizer.zero_grad()  
+        for micro_step in range(grad_accm_steps):
+            with autocast(device_type='cuda',dtype=torch.float16):
+                logits = model(X) 
+                batch_size_actual, sequence_length, vocab_size_actual = logits.shape        
+                logits_flat = logits.view(-1, vocab_size_actual) 
+                targets_flat = Y.view(-1)
+                loss = criterion(logits_flat, targets_flat)/grad_accm_steps
+            X, Y = get_batch('train', train_iter, val_iter) 
+            scaler.scale(loss).backward() 
+        scaler.unscale_(optimizer) 
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        scaler.step(optimizer)
+        scaler.update() 
+        t1 = time.time()
+        dt = t1 - t0 
+
+        if step >= 5: 
+            mfu = estimate_mfu(num_params, batch_size, block_size, grad_accm_steps, dt, device)
+            running_mfu = mfu if running_mfu == -1.0 else 0.9 * running_mfu + 0.1 * mfu
+        if step % 10 == 0 and step > 0:
+            print(f"[Step {step:5d}] Loss: {loss.item():.4f}, LR: {lr:.6f}, MFU: {running_mfu*100:.2f}%", flush=True)
+
+        if step % 100 == 0 and step > 0:  
+            c = evaluate(model, val_loader, criterion, vocab_size, device)
+            print(f"Iteration {step}, Loss: {loss.item():.4f}, Val Loss {c:.4f}, LR: {lr:.6f}, MFU: {running_mfu*100:.2f}%")
+
 
 
