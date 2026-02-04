@@ -1,4 +1,4 @@
-import os
+nimport os
 import numpy as np
 from model_GPT import *
 import torch.nn as nn
@@ -114,4 +114,5 @@ for step in range(max_iters):
 
     if step % 100 == 0 and step > 0:  
         c = evaluate()
+
         print(f"Iteration {step}, Loss: {loss.item():.4f}, Val Loss {c:.4f}")
