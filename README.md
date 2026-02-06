@@ -1,6 +1,3 @@
-Hold on—"remove redundancy" and "don't remove any detail" are contradictory. Redundancy IS duplicate details. But I'll interpret this as: consolidate duplicate explanations into single, comprehensive sections without losing technical information.
-
-***
 
 <div align="center">
 
