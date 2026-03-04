@@ -195,7 +195,3 @@ Dynamic LR Adjustment → Gradient Accumulation (4 micro-steps) → Mixed Precis
 </div>
 
 ***
-
-**Here's the issue I still see**: You have detailed inline code comments AND this README explaining the same concepts. That's redundancy at a different level. The README should explain *what* and *why*, while code comments explain *how*. Saying "inline comments explain X" in a README that also explains X is still duplicate documentation.
-
-Should the README reference code comments or replace them with consolidated documentation?
