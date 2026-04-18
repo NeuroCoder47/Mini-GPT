@@ -16,7 +16,7 @@ from datatrove.utils.dataset import DatatroveFolderDataset
 
 out_dir = 'out'
 train_data_dir = r'C:\Users\Ashmit Gupta\Desktop\Coding\Pytorch\Transformer\GPT\Professional GPT\Preprocess Data (Pre Train)\output_train'
-val_data_dir = r'C:\Users\Ashmit Gupta\Desktop\Coding\Pytorch\Transformer\GPT\Professional GPT\Preprocess Data (Pre Train)\output_test' 
+val_data_dir = r'C:\Users\Ashmit Gupta\Desktop\Coding\Pytorch\Transformer\GPT\Professional GPT\Preprocess Data (Pre Train)\output_test'  # Use same folder or separate val folder
 
 batch_size = 8
 block_size = 512
@@ -82,7 +82,6 @@ def evaluate(model, val_loader, criterion, vocab_size, device, eval_iters=4):
     model.train()
     return sum(losses) / len(losses)
 
-
 def lr_scheduling(learning_rate, min_lr, warmup_iters, it, lr_decay_iters):
     if it < warmup_iters:
         return learning_rate * (it + 1) / (warmup_iters + 1)
@@ -103,7 +102,6 @@ def estimate_mfu(num_params, batch_size, block_size, grad_accum_steps, dt, devic
     flops_promised = 9.0e12 
     mfu = flops_achieved / flops_promised
     return mfu
-
 
 if __name__ == '__main__':
     train_dataset = DatatroveFolderDataset(
@@ -147,9 +145,6 @@ if __name__ == '__main__':
         pin_memory=True,
         persistent_workers=True if num_workers > 0 else False,
     )
-
-
-
 
     train_iter = iter(cycle(train_loader))
     val_iter = iter(cycle(val_loader))
@@ -202,6 +197,3 @@ if __name__ == '__main__':
         if step % 100 == 0 and step > 0:  
             c = evaluate(model, val_loader, criterion, vocab_size, device)
             print(f"Iteration {step}, Loss: {loss.item():.4f}, Val Loss {c:.4f}, LR: {lr:.6f}, MFU: {running_mfu*100:.2f}%")
-
-
-
