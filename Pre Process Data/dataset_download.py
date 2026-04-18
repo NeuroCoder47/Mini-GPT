@@ -9,34 +9,11 @@ from multiprocessing import Pool
 DATASET_NAME = "JeanKaddour/minipile"
 BASE_URL = f"https://huggingface.co/datasets/{DATASET_NAME}/resolve/main/data"
 MAX_SHARD = 14
-SPLIT = "validation"  # Change this to "validation" or "test" as needed
-base_dir = r"C:\\Users\\Ashmit Gupta\\Desktop\\Coding\\Pytorch\\Transformer\\GPT\\Professional GPT\\Preprocess Data (Pre Train)\\data_test"
-DATA_DIR = os.path.join(base_dir, "base_data")
+SPLIT = "validation" 
+DATA_DIR = r"C:\\Users\\Ashmit Gupta\\Desktop\\Coding\\Pytorch\\Transformer\\GPT\\Professional GPT\\Preprocess Data (Pre Train)\\data_test"
 os.makedirs(DATA_DIR, exist_ok=True)
 
 
-
-def list_parquet_files(data_dir=None):
-    data_dir = DATA_DIR if data_dir is None else data_dir
-    parquet_files = sorted([
-        f for f in os.listdir(data_dir)
-        if f.endswith('.parquet') and not f.endswith('.tmp')
-    ])
-    parquet_paths = [os.path.join(data_dir, f) for f in parquet_files]
-    return parquet_paths
-
-
-def parquets_iter_batched(start=0, step=1):
-    parquet_paths = list_parquet_files()
-    for filepath in parquet_paths:
-        pf = pq.ParquetFile(filepath)
-        for rg_idx in range(start, pf.num_row_groups, step):
-            rg = pf.read_row_group(rg_idx)
-            texts = rg.column('text').to_pylist()
-            yield texts
-
-
-# -----------------------------------------------------------------------------
 def download_single_file(filename):
 
 
@@ -107,6 +84,11 @@ if __name__ == "__main__":
     
     with Pool(processes=args.num_workers) as pool:
         results = pool.map(download_single_file, files_to_download)
+
+
+    successful = sum(1 for success in results if success)
+    print(f"Done! Downloaded: {successful}/{len(files_to_download)} shards to {DATA_DIR}")
+
 
 
     successful = sum(1 for success in results if success)
