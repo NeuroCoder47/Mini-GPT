@@ -21,7 +21,7 @@ args = parser.parse_args()
 print(f"max_chars: {args.max_chars:,}")
 print(f"doc_cap: {args.doc_cap:,}")
 print(f"vocab_size: {args.vocab_size:,}")
-
+tok_train_file, tok_save_path = get_base_dir()
 # -----------------------------------------------------------------------------
 # Text iterator
 
@@ -32,7 +32,7 @@ def text_iterator():
     3) Break when we've seen args.max_chars characters
     """
     nchars = 0
-    for batch in parquets_iter_batched(split="train"):
+    for batch in parquets_iter_batched():
         for doc in batch:
             doc_text = doc
             if len(doc_text) > args.doc_cap:
@@ -53,8 +53,8 @@ print(f"Training time: {train_time:.2f}s")
 
 # -----------------------------------------------------------------------------
 # Save the tokenizer to disk
-base_dir = get_base_dir()
-tokenizer_dir = os.path.join(base_dir, "tokenizer")
+tokenizer_dir = tok_save_path
+
 tokenizer.save(tokenizer_dir)
 
 # -----------------------------------------------------------------------------
@@ -90,17 +90,3 @@ with open(token_bytes_path, "wb") as f:
     torch.save(token_bytes, f)
 print(f"Saved token_bytes to {token_bytes_path}")
 
-# Log to report
-from report import get_report
-token_bytes_nonzero = (token_bytes[token_bytes > 0]).to(dtype=torch.float32)
-get_report().log(section="Tokenizer training", data=[
-    vars(args), # argparse command line arguments
-    {"train_time": train_time},
-    {"num_special_tokens": len(special_set)},
-    {
-        "token_bytes_min": int(token_bytes_nonzero.min().item()),
-        "token_bytes_max": int(token_bytes_nonzero.max().item()),
-        "token_bytes_mean": token_bytes_nonzero.mean().item(),
-        "token_bytes_std": token_bytes_nonzero.std().item(),
-    }
-])
