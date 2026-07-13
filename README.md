@@ -55,10 +55,12 @@ graph LR
 ### Model Configuration
 
 ```yaml
-Architecture: 4-layer GPT Transformer Decoder
-Attention Heads: 16 | Embedding Dims: 512
-Parameters: ~25M | Context Window: 512 tokens
-Vocabulary: 32,768 BPE tokens
+Architecture: 12-layer GPT Transformer Decoder
+Attention Heads: 12 | Embedding Dims: 768
+Parameters: ~125M | Context Window: 1024 tokens
+Vocabulary: 50,257
+Head Dimension: 64
+Feed-Forward Dimension: 3072
 ```
 
 ### Core Components
