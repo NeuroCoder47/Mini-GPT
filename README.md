@@ -67,14 +67,14 @@ Feed-Forward Dimension: 3072
 
 **Transformer Decoder Stack**
 - Pure decoder-only autoregressive architecture for next-token prediction
-- Multi-head self-attention with 16 heads for parallel attention patterns
+- Multi-head self-attention with 12 heads for parallel attention patterns
 - Sinusoidal positional embeddings encode token sequence positions
 - Pre-norm layer normalization architecture with residual connections
 - Dropout regularization at multiple layers prevents overfitting
 
 **Tokenization System**
 - Byte Pair Encoding (BPE) algorithm trained from scratch on your corpus
-- Configurable vocabulary size (default: 32,768 tokens)
+- Configurable vocabulary size (default: 50,257 )
 - Special tokens: `<|bos|>` (beginning), `<|eos|>` (end), `<|pad|>` (padding)
 - Full UTF-8 Unicode support for multilingual text
 - Source code adapted from [Nanochat](https://github.com/karpathy/nanochat) by Andrej Karpathy
@@ -130,6 +130,8 @@ Feed-Forward Dimension: 3072
 - Ready for `torch.compile()` when uncommented (provides ~2x additional speedup)
 - Model FLOPS Utilization (MFU) tracking measures achieved FLOPS vs theoretical GPU peak
 - Non-blocking CUDA transfers overlap data loading with computation
+### Parallelism Strategy 
+- 1D Parallelism (Data Parallel) Used
 
 ### Training Flow
 
