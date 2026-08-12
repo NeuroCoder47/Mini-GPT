@@ -89,4 +89,3 @@ token_bytes_path = os.path.join(tokenizer_dir, "token_bytes.pt")
 with open(token_bytes_path, "wb") as f:
     torch.save(token_bytes, f)
 print(f"Saved token_bytes to {token_bytes_path}")
-

@@ -145,4 +145,3 @@ class HuggingFaceTokenizer:
         tokenizer_path = os.path.join(tokenizer_dir, "tokenizer.json")
         self.tokenizer.save(tokenizer_path)
         print(f"Saved tokenizer to {tokenizer_path}")
-
